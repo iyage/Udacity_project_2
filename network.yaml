@@ -1,9 +1,5 @@
 Description: >
-    Carlos Rivas / Udacity
-    This template deploys a VPC, with a pair of public and private subnets spread 
-    across two Availabilty Zones. It deploys an Internet Gateway, with a default 
-    route on the public subnets. It deploys a pair of NAT Gateways (one in each AZ), 
-    and default routes for them in the private subnets.
+    Udacity project2 deploying high availability  static website
 Parameters:
 
     EnvironmentName:
@@ -11,7 +7,7 @@ Parameters:
         Type: String
 
     VpcCIDR: 
-        Description: Please enter the IP range (CIDR notation) for this VPC
+        Description: Ip range for the vpc
         Type: String
         Default: 10.0.0.0/16
 
