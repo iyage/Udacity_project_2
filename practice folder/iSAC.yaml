@@ -1,0 +1,261 @@
+
+Description:
+  Deploying a higly scable web site in the cloud
+Parameters:
+  EnvironmentName:
+    Description: An enviroment name that provide prefix for identification
+    Type: String
+  vpcCIDR:
+    Description: Cidr block for the vpcCIDR
+    Type: String
+    Default: 10.0.0.0/20
+  publicsubnet1CIDR:
+    Description: Cidr block for publicsubnet1
+    Type: String
+    Default: 10.0.0.0/24
+  publicsubnet2CIDR:
+    Description: Cidr block for publicsubnet2
+    Type: String
+    Default: 10.0.0.1/24
+  privatesubnet1CIDR:
+    Description: Cidr block for privatesubnet1
+    Type: String
+    Default: 10.0.0.2/24
+  privatesubnet2CIDR:
+    Description: Cidr block for privatesubnet2
+    Type: String
+    Default: 10.0.0.3/24
+
+Resources:
+  # instace profile contains the IAM Role name(s) that we want to associate to our auto scaling EC2 Servers
+  # never give too much permissions to your EC2 instances! if they get hacked, the permissions get hacked also!
+  # in this example, I create a Role called UdacityS3ReadOnlyC2 and just give it a policy of S3 Read-Only Access
+  vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref vpcCIDR
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Ref EnvironmentName
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+       - Key: Name
+         Value: !Ref EnvironmentName
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref vpc
+
+  publicsubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref publicsubnet1CIDR
+      VpcId: !Ref vpc
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName} public Subnet (AZ1)"
+
+  publicsubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Ref publicsubnet2CIDR
+      VpcId: !Ref vpc
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName} Public Subnet (AZ2)"
+  privatesubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      CidrBlock: !Ref privatesubnet1CIDR
+      VpcId: !Ref vpc
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName} Private Subnet (AZ1)"
+  
+  privatesubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      CidrBlock: !Ref privatesubnet2CIDR
+      VpcId: !Ref vpc
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName} Private Subnet (AZ2)"
+  
+  eip1:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+  
+  eip2:
+    Type: AWS::EC2::EIP
+    DependsOn:  InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+  
+  NatG1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt eip1.AllocationId
+      SubnetId: !Ref  publicsubnet1
+  
+  NatG2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt eip2.AllocationId
+      SubnetId: !Ref  publicsubnet2
+  
+  routeTablePublic:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref vpc
+      Tags:
+        - Key: Name 
+          Value:  !Sub "${EnvironmentName} public route table"
+
+  routeTablePrivate1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref vpc
+      Tags:
+        - Key: Name 
+          Value:  !Sub "${EnvironmentName} private route table1"
+
+  routeTablePrivate2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref vpc
+      Tags:
+        - Key: Name 
+          Value:  !Sub "${EnvironmentName} private route table2"
+
+  DefaultPublicroute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref routeTablePublic
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref  InternetGateway
+
+
+  Privateroute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref routeTablePrivate1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatG1
+
+  Privateroute2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref routeTablePrivate2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref  NatG2
+
+  PublicrouteTableAssoc1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref publicsubnet1
+      RouteTableId: !Ref routeTablePublic
+
+  PublicrouteTableAssoc2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref publicsubnet2
+      RouteTableId: !Ref routeTablePublic
+  
+
+  PrivaterouteTableAsso1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref privatesubnet1
+      RouteTableId: !Ref routeTablePrivate1
+
+  PrivaterouteTableAsso2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref privatesubnet2
+      RouteTableId: !Ref  routeTablePrivate2
+  
+Outputs:
+    VPC:
+      Description: Information about the value
+      Value: !Ref  vpc
+      Export:  
+        Name: !Sub "${EnvironmentName}-VPCID"
+    PublicSubnets:
+      Description: Information about the value
+      Value: !Join  [ ",", [ !Ref  publicsubnet1, !Ref  publicsubnet2 ]] 
+      Export:  
+        Name: !Sub "${EnvironmentName}-PUB-SN"
+    
+    PrivateSubnets:
+      Description: Information about the value
+      Value: !Join  [ ",", [ !Ref  privatesubnet1, !Ref  privatesubnet2 ]] 
+      Export:  
+        Name: !Sub "${EnvironmentName}-PRIV-SN"
+
+    PublicSubnet1:
+      Description: Information about the value
+      Value:  !Ref  publicsubnet1
+      Export:  
+        Name: !Sub "${EnvironmentName}-PUB-SN1"
+
+    PublicSubnet2:
+      Description: Information about the value
+      Value: !Ref  publicsubnet2 
+      Export: 
+       Name: !Sub "${EnvironmentName}-PUB-SN2"
+
+    PrivateSubnet1:
+      Description: Information about the value
+      Value:  !Ref privatesubnet1
+      Export:  
+        Name: !Sub "${EnvironmentName}-PRIV-SN1"
+    
+    PrivateSubnet2:
+      Description: Information about the value
+      Value:  !Ref privatesubnet2
+      Export:  
+        Name: !Sub "${EnvironmentName}-PRIV-SN2"
+
+         
+
+  # ProfileWithRolesForOurApp:
+  #   Type: AWS::IAM::InstanceProfile
+  #   Properties: 
+  #     Roles:
+  #       - UdacityS3ReadOnlyEC2
+# Outputs: 
+  # This is also optional.
+  # Bonus points for useful outputs!
+  # for example, if you create a Load Balancer
+  # it's nice to output the URL to it here, so that we don't have to go to the console to get it.
+
+# Sample UserData
+# When creating your Launch Configuration, you may need a UserData script
+# here's one that you can use for Ubuntu Linux that will:
+# Install Apache Web Server, Start it, and create an index.html that will be displayed
+# when you visit the IP address of this server with your web browser
+#Here it is:
+#
+#          #!/bin/bash
+#          apt-get update -y
+#          apt-get install apache2 -y
+#          systemctl start apache2.service
+#          cd /var/www/html
+#          echo "Udacity Demo Web Server Up and Running!" > index.html
